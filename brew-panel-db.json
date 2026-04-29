@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "createdAt": "2026-04-28T16:10:00.000Z",
+  "users": [
+    {
+      "id": "usr_seed_admin",
+      "username": "admin",
+      "role": "admin",
+      "passwordHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "createdAt": "2026-04-28T16:10:00.000Z",
+      "updatedAt": "2026-04-28T16:10:00.000Z"
+    }
+  ],
+  "tasks": [],
+  "inventory": [],
+  "tanks": [],
+  "products": [],
+  "reservations": [],
+  "chatMessages": [],
+  "session": {
+    "userId": null,
+    "createdAt": null
+  }
+}

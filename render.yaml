@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: browar-panel
+    runtime: node
+    plan: starter
+    buildCommand: ""
+    startCommand: node server.js
+    disk:
+      name: browar-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1
