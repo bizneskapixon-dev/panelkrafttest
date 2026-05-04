@@ -1359,11 +1359,13 @@
     const closeNavButton = document.getElementById("btnCloseNav");
     const navOverlay = document.getElementById("navOverlay");
 
-    mobileNavButton.addEventListener("click", () => {
-      setMobileNav(!state.mobileNavOpen);
-    });
-    closeNavButton.addEventListener("click", closeMobileNav);
-    navOverlay.addEventListener("click", closeMobileNav);
+    if (mobileNavButton) {
+      mobileNavButton.addEventListener("click", () => {
+        setMobileNav(!state.mobileNavOpen);
+      });
+    }
+    if (closeNavButton) closeNavButton.addEventListener("click", closeMobileNav);
+    if (navOverlay) navOverlay.addEventListener("click", closeMobileNav);
     window.addEventListener("resize", () => {
       if (!isMobileLayout()) closeMobileNav();
     });
@@ -1411,65 +1413,3 @@
   }
 
   async function route() {
-    if (!state.bootstrapped) await refreshState();
-    if (state.currentUser) {
-      await Promise.all([refreshOnlineUsers(), refreshChatMessages()]);
-    }
-    if (!isMobileLayout()) closeMobileNav();
-    const db = getCurrentDb();
-    setUserPill(state.currentUser);
-    const routeKey = pickRoute();
-    if (!state.currentUser) {
-      setPageTitle("Logowanie", "");
-      setActiveNav(routeKey);
-      showLogin();
-      return;
-    }
-    hideLogin();
-    if (routeKey === "dashboard") return renderDashboard(db);
-    if (routeKey === "lists") return renderLists(db);
-    if (routeKey === "inventory") return renderInventory(db);
-    if (routeKey === "tanks") return renderTanks(db);
-    if (routeKey === "products") return renderProducts(db);
-    if (routeKey === "reservations") return renderReservations(db);
-    if (routeKey === "chat") return renderChat(db);
-    if (routeKey === "users") return renderUsers(db);
-    location.hash = "#/dashboard";
-  }
-
-  function startRealtimeLoops() {
-    if (state.presenceTimer) clearInterval(state.presenceTimer);
-    if (state.chatTimer) clearInterval(state.chatTimer);
-
-    state.presenceTimer = setInterval(async () => {
-      if (!state.currentUser) return;
-      await sendPresencePing();
-      await refreshOnlineUsers();
-      const routeKey = pickRoute();
-      if (routeKey === "dashboard" || routeKey === "users" || routeKey === "chat") {
-        await route();
-      }
-    }, 20000);
-
-    state.chatTimer = setInterval(async () => {
-      if (!state.currentUser) return;
-      await refreshChatMessages();
-      if (pickRoute() === "chat") {
-        renderChat(getCurrentDb());
-      }
-    }, 5000);
-  }
-
-  async function main() {
-    bindLogin();
-    bindGlobal();
-    window.addEventListener("hashchange", () => { route().catch((error) => alert(error.message)); });
-    await refreshState();
-    startRealtimeLoops();
-    await route();
-  }
-
-  main().catch((error) => {
-    alert(error.message || "Blad aplikacji.");
-  });
-})();
