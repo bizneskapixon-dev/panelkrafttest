@@ -9,6 +9,10 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
+        <div class="sidebar-mobile-head">
+          <div class="muted small">Nawigacja</div>
+          <button class="btn btn-ghost sidebar-close" id="btnCloseNav" type="button">Zamknij</button>
+        </div>
         <div class="brand">
           <div class="brand-mark">BP</div>
           <div>
@@ -39,11 +43,14 @@
 
       <main class="main">
         <header class="topbar">
-          <div>
-            <h1 class="page-title" id="uiPageTitle">Pulpit</h1>
-            <div class="crumb" id="uiPageCrumb"></div>
+          <div class="topbar-main">
+            <button class="btn btn-ghost mobile-nav-toggle" id="btnMobileNav" type="button">Menu</button>
+            <div>
+              <h1 class="page-title" id="uiPageTitle">Pulpit</h1>
+              <div class="crumb" id="uiPageCrumb"></div>
+            </div>
           </div>
-          <div class="row wrap">
+          <div class="row wrap topbar-actions">
             <button class="btn btn-secondary" id="btnExport" type="button">Eksport</button>
             <label class="btn file-btn">
               Import
@@ -56,6 +63,7 @@
     </div>
 
     <div id="overlay" class="overlay hidden"></div>
+    <div id="navOverlay" class="overlay nav-overlay hidden"></div>
 
     <dialog id="loginDialog" class="dialog">
       <form method="dialog" class="dialog-body" id="loginForm">
@@ -71,7 +79,7 @@
             <input id="loginPassword" type="password" autocomplete="current-password" required />
           </label>
         </div>
-        <div class="callout">Start: `admin` / `admin123`</div>
+        <div class="callout">Aplikacja stworzona przez: Mateusz Kapica</div>
         <div class="row end">
           <button class="btn" type="submit">Zaloguj</button>
         </div>
