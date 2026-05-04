@@ -106,6 +106,16 @@ function text(res, status, payload) {
   res.end(payload);
 }
 
+function pdf(res, filename, contentBuffer) {
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+    "Content-Length": contentBuffer.length
+  });
+  res.end(contentBuffer);
+}
+
 function parseCookies(req) {
   const out = {};
   for (const part of String(req.headers.cookie || "").split(";")) {
@@ -263,6 +273,239 @@ function normalizeImportDb(incomingDb) {
   };
 }
 
+function fmtQty(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return "-";
+  return num.toLocaleString("pl-PL", { maximumFractionDigits: 3 });
+}
+
+function normalizeReservationItems(item) {
+  if (Array.isArray(item?.items)) {
+    return item.items
+      .map((entry) => ({
+        productId: entry.productId,
+        qty: Number(entry.qty || 0)
+      }))
+      .filter((entry) => entry.productId && entry.qty > 0);
+  }
+  if (item?.productId) {
+    return [{ productId: item.productId, qty: Number(item.qty || 0) }].filter((entry) => entry.qty > 0);
+  }
+  return [];
+}
+
+function normalizeReservationFulfillment(item) {
+  return Array.isArray(item?.fulfillment) ? item.fulfillment : [];
+}
+
+function asciiPdfText(value) {
+  return String(value || "")
+    .replaceAll("ą", "a")
+    .replaceAll("ć", "c")
+    .replaceAll("ę", "e")
+    .replaceAll("ł", "l")
+    .replaceAll("ń", "n")
+    .replaceAll("ó", "o")
+    .replaceAll("ś", "s")
+    .replaceAll("ż", "z")
+    .replaceAll("ź", "z")
+    .replaceAll("Ą", "A")
+    .replaceAll("Ć", "C")
+    .replaceAll("Ę", "E")
+    .replaceAll("Ł", "L")
+    .replaceAll("Ń", "N")
+    .replaceAll("Ó", "O")
+    .replaceAll("Ś", "S")
+    .replaceAll("Ż", "Z")
+    .replaceAll("Ź", "Z")
+    .replace(/[^\x20-\x7E]/g, " ");
+}
+
+function pdfEscape(value) {
+  return asciiPdfText(value)
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)");
+}
+
+function wrapPdfLine(textValue, maxChars = 88) {
+  const text = asciiPdfText(textValue).trim();
+  if (!text) return [""];
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function reservationMatchesDay(item, dateValue) {
+  const pickupBy = String(item.pickupBy || "").trim();
+  return pickupBy.slice(0, 10) === dateValue;
+}
+
+function buildDailyReservationReport(db, dateValue) {
+  const productById = new Map((db.products || []).map((item) => [item.id, item]));
+  const reservations = (db.reservations || []).filter((item) => item.status !== "cancelled" && reservationMatchesDay(item, dateValue));
+
+  const inventoryGroups = [];
+  const tankGroups = [];
+
+  for (const reservation of reservations) {
+    const items = normalizeReservationItems(reservation);
+    const itemsById = new Map(items.map((entry) => [entry.productId, entry]));
+    const fulfillment = normalizeReservationFulfillment(reservation);
+
+    const inventoryLines = [];
+    const tankLines = [];
+
+    for (const entry of fulfillment) {
+      const product = productById.get(entry.productId);
+      const unit = asciiPdfText(product?.unit || "szt");
+      const productName = asciiPdfText(entry.productName || product?.name || "Produkt");
+      if (Number(entry.fromProductQty || 0) > 0) {
+        inventoryLines.push(`- ${productName}: ${fmtQty(entry.fromProductQty)} ${unit}`);
+      }
+      if (Number(entry.fromTankQty || 0) > 0) {
+        const tanks = (entry.tankAllocations || [])
+          .map((tank) => `${asciiPdfText(tank.tankName || "tank")} ${fmtQty(tank.quantityHl)} hl`)
+          .join(", ");
+        tankLines.push(`- ${productName}: ${fmtQty(entry.fromTankQty)} ${unit}; tanki: ${tanks}`);
+      }
+    }
+
+    if (fulfillment.length === 0) {
+      for (const entry of items) {
+        const product = productById.get(entry.productId);
+        const unit = asciiPdfText(product?.unit || "szt");
+        inventoryLines.push(`- ${asciiPdfText(product?.name || "Produkt")}: ${fmtQty(entry.qty)} ${unit}`);
+      }
+    }
+
+    const customerLine = `Klient: ${asciiPdfText(reservation.customerName || "-")} | Kontakt: ${asciiPdfText(reservation.customerContact || "-")} | Odbior: ${asciiPdfText(reservation.pickupBy || "-")}`;
+    const notesLine = reservation.notes ? `Uwagi: ${asciiPdfText(reservation.notes)}` : "";
+
+    if (inventoryLines.length > 0) {
+      inventoryGroups.push({
+        header: customerLine,
+        notes: notesLine,
+        lines: inventoryLines
+      });
+    }
+
+    if (tankLines.length > 0) {
+      tankGroups.push({
+        header: customerLine,
+        notes: notesLine,
+        lines: tankLines
+      });
+    }
+  }
+
+  const lines = [
+    "Lista rezerwacji dla magazyniera",
+    `Dzien odbioru: ${dateValue}`,
+    `Liczba rezerwacji: ${reservations.length}`,
+    ""
+  ];
+
+  lines.push("1. Zamowienie - rzeczy, ktore sa w magazynie");
+  if (inventoryGroups.length === 0) {
+    lines.push("Brak pozycji magazynowych.");
+  } else {
+    for (const group of inventoryGroups) {
+      lines.push(group.header);
+      if (group.notes) lines.push(group.notes);
+      for (const line of group.lines) lines.push(line);
+      lines.push("");
+    }
+  }
+
+  lines.push("");
+  lines.push("2. Rzeczy, ktore trzeba wziac z tanka");
+  if (tankGroups.length === 0) {
+    lines.push("Brak pobran z tankow.");
+  } else {
+    for (const group of tankGroups) {
+      lines.push(group.header);
+      if (group.notes) lines.push(group.notes);
+      for (const line of group.lines) lines.push(line);
+      lines.push("");
+    }
+  }
+
+  return { reservations, lines };
+}
+
+function buildSimplePdfBuffer(lines) {
+  const pageWidth = 595;
+  const pageHeight = 842;
+  const marginX = 40;
+  const startY = 800;
+  const lineHeight = 15;
+  const maxLinesPerPage = 48;
+  const wrappedLines = lines.flatMap((line) => wrapPdfLine(line, 88));
+  const pages = [];
+  for (let i = 0; i < wrappedLines.length; i += maxLinesPerPage) {
+    pages.push(wrappedLines.slice(i, i + maxLinesPerPage));
+  }
+  if (pages.length === 0) pages.push(["Brak danych."]);
+
+  const objects = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+
+  const pageObjectIds = [];
+  const contentObjectIds = [];
+  let nextId = 3;
+  for (let i = 0; i < pages.length; i += 1) {
+    pageObjectIds.push(nextId++);
+    contentObjectIds.push(nextId++);
+  }
+  const fontObjectId = nextId++;
+  objects.push(`<< /Type /Pages /Count ${pages.length} /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] >>`);
+
+  for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+    const pageId = pageObjectIds[pageIndex];
+    const contentId = contentObjectIds[pageIndex];
+    objects[pageId - 1] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+
+    const commands = ["BT", "/F1 11 Tf"];
+    let y = startY;
+    for (const line of pages[pageIndex]) {
+      commands.push(`1 0 0 1 ${marginX} ${y} Tm (${pdfEscape(line)}) Tj`);
+      y -= lineHeight;
+    }
+    commands.push("ET");
+    const stream = commands.join("\n");
+    objects[contentId - 1] = `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`;
+  }
+
+  objects[fontObjectId - 1] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  let pdfText = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let i = 0; i < objects.length; i += 1) {
+    offsets.push(Buffer.byteLength(pdfText, "latin1"));
+    pdfText += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdfText, "latin1");
+  pdfText += `xref\n0 ${objects.length + 1}\n`;
+  pdfText += "0000000000 65535 f \n";
+  for (let i = 1; i < offsets.length; i += 1) {
+    pdfText += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdfText += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdfText, "latin1");
+}
+
 function serveFile(res, fileName) {
   const full = path.join(ROOT, fileName);
   if (!fs.existsSync(full)) return text(res, 404, "Not found");
@@ -278,6 +521,8 @@ function serveFile(res, fileName) {
 }
 
 async function handleApi(req, res, db) {
+  const requestUrl = new URL(req.url, "http://localhost");
+
   if (req.url === "/api/wake" && req.method === "GET") {
     return json(res, 200, {
       ok: true,
@@ -307,6 +552,16 @@ async function handleApi(req, res, db) {
     const user = requireAuth(req, res, db);
     if (!user) return true;
     return json(res, 200, { db: sanitizeDb(db), currentUser: sanitizeUser(user) });
+  }
+
+  if (requestUrl.pathname === "/api/reservations/daily-pdf" && req.method === "GET") {
+    const user = requireAuth(req, res, db);
+    if (!user) return true;
+    const dateValue = String(requestUrl.searchParams.get("date") || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return json(res, 400, { error: "Podaj date w formacie RRRR-MM-DD." });
+    const report = buildDailyReservationReport(db, dateValue);
+    const pdfBuffer = buildSimplePdfBuffer(report.lines);
+    return pdf(res, `rezerwacje-${dateValue}.pdf`, pdfBuffer);
   }
 
   if (req.url === "/api/online" && req.method === "GET") {
