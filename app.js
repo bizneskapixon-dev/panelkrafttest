@@ -7,6 +7,7 @@
     bootstrapped: false,
     onlineUsers: [],
     chatMessages: [],
+    mobileNavOpen: false,
     presenceTimer: null,
     chatTimer: null
   };
@@ -127,6 +128,23 @@
     document.querySelectorAll(".nav-link").forEach((node) => {
       node.classList.toggle("active", node.dataset.route === route);
     });
+  }
+
+  function isMobileLayout() {
+    return window.matchMedia("(max-width: 980px)").matches;
+  }
+
+  function setMobileNav(open) {
+    state.mobileNavOpen = Boolean(open && isMobileLayout());
+    const sidebar = document.querySelector(".sidebar");
+    const overlay = document.getElementById("navOverlay");
+    if (sidebar) sidebar.classList.toggle("open", state.mobileNavOpen);
+    if (overlay) overlay.classList.toggle("hidden", !state.mobileNavOpen);
+    document.body.classList.toggle("sidebar-open", state.mobileNavOpen);
+  }
+
+  function closeMobileNav() {
+    setMobileNav(false);
   }
 
   function setUserPill(user) {
@@ -373,6 +391,62 @@
         return `${entry.productName}: ${chunks.join(" + ")}`;
       })
       .join(" | ");
+  }
+
+  function todayYmd() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  async function downloadReservationDayPdf(dateValue) {
+    const response = await fetch(`/api/reservations/daily-pdf?date=${encodeURIComponent(dateValue)}`, {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      let message = "Nie udalo sie pobrac PDF.";
+      try {
+        const payload = await response.json();
+        if (payload && payload.error) message = payload.error;
+      } catch (_) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rezerwacje-${dateValue}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function openReservationDayPdfModal() {
+    uiModal.open({
+      titleText: "PDF rezerwacji z dnia",
+      subtitleText: "Lista dla magazyniera: magazyn i pobrania z tankow",
+      okText: "Pobierz PDF",
+      initialFocusId: "reservationPdfDate",
+      contentHtml: `
+        <label class="field">
+          <div class="label">Dzien odbioru</div>
+          <input id="reservationPdfDate" name="date" type="date" value="${escapeHtml(todayYmd())}" required />
+        </label>
+        <div class="callout">PDF bedzie podzielony na 2 sekcje: rzeczy z magazynu oraz rzeczy do pobrania z tankow.</div>
+      `
+    });
+
+    attachModalSubmit(async (form, wrapped) => {
+      const values = uiModal.values(form);
+      if (!values.date) return uiModal.setError("Wybierz date.");
+      try {
+        await downloadReservationDayPdf(values.date);
+        form.removeEventListener("submit", wrapped);
+        uiModal.close();
+      } catch (error) {
+        uiModal.setError(error.message);
+      }
+    });
   }
 
   function downloadJson(filename, value) {
@@ -668,7 +742,10 @@
       <div class="card">
         <div class="card-head">
           <div class="card-title">Rezerwacje</div>
-          <button class="btn" id="btnAddReservation" type="button">Nowa</button>
+          <div class="row wrap">
+            <button class="btn btn-secondary" id="btnReservationDayPdf" type="button">PDF dnia</button>
+            <button class="btn" id="btnAddReservation" type="button">Nowa</button>
+          </div>
         </div>
         <div class="card-body">
           ${db.reservations.length === 0 ? '<div class="callout">Brak rezerwacji.</div>' : `
@@ -695,6 +772,7 @@
         </div>
       </div>
     `);
+    document.getElementById("btnReservationDayPdf").addEventListener("click", openReservationDayPdfModal);
     document.getElementById("btnAddReservation").addEventListener("click", () => openReservationModal(getCurrentDb(), null));
     bindRowActions();
   }
@@ -1277,6 +1355,24 @@
   }
 
   function bindGlobal() {
+    const mobileNavButton = document.getElementById("btnMobileNav");
+    const closeNavButton = document.getElementById("btnCloseNav");
+    const navOverlay = document.getElementById("navOverlay");
+
+    mobileNavButton.addEventListener("click", () => {
+      setMobileNav(!state.mobileNavOpen);
+    });
+    closeNavButton.addEventListener("click", closeMobileNav);
+    navOverlay.addEventListener("click", closeMobileNav);
+    window.addEventListener("resize", () => {
+      if (!isMobileLayout()) closeMobileNav();
+    });
+    document.querySelectorAll(".nav-link").forEach((node) => {
+      node.addEventListener("click", () => {
+        closeMobileNav();
+      });
+    });
+
     document.getElementById("btnLogout").addEventListener("click", async () => {
       try {
         await api("/api/logout", { method: "POST", body: {} });
@@ -1319,6 +1415,7 @@
     if (state.currentUser) {
       await Promise.all([refreshOnlineUsers(), refreshChatMessages()]);
     }
+    if (!isMobileLayout()) closeMobileNav();
     const db = getCurrentDb();
     setUserPill(state.currentUser);
     const routeKey = pickRoute();
