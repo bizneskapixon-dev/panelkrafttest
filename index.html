@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browar Panel</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">BP</div>
+          <div>
+            <div class="brand-name">Browar Panel</div>
+            <div class="brand-sub">Magazyn, zadania, rezerwacje</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav-link" href="#/dashboard" data-route="dashboard">Pulpit</a>
+          <a class="nav-link" href="#/lists" data-route="lists">Listy</a>
+          <a class="nav-link" href="#/inventory" data-route="inventory">Magazyn</a>
+          <a class="nav-link" href="#/tanks" data-route="tanks">Piwo w tankach</a>
+          <a class="nav-link" href="#/products" data-route="products">Produkty</a>
+          <a class="nav-link" href="#/reservations" data-route="reservations">Rezerwacje</a>
+          <a class="nav-link" href="#/chat" data-route="chat">Czat</a>
+          <a class="nav-link" href="#/users" data-route="users">Uzytkownicy</a>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="user-pill">
+            <div>
+              <div id="uiUserName">-</div>
+              <div class="muted small" id="uiUserRole">-</div>
+            </div>
+            <button class="btn btn-ghost" id="btnLogout" type="button">Wyloguj</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1 class="page-title" id="uiPageTitle">Pulpit</h1>
+            <div class="crumb" id="uiPageCrumb"></div>
+          </div>
+          <div class="row wrap">
+            <button class="btn btn-secondary" id="btnExport" type="button">Eksport</button>
+            <label class="btn file-btn">
+              Import
+              <input id="fileImport" type="file" accept="application/json" />
+            </label>
+          </div>
+        </header>
+        <section class="content" id="viewRoot"></section>
+      </main>
+    </div>
+
+    <div id="overlay" class="overlay hidden"></div>
+
+    <dialog id="loginDialog" class="dialog">
+      <form method="dialog" class="dialog-body" id="loginForm">
+        <div class="dialog-title">Logowanie</div>
+        <div class="dialog-subtitle">Wejdz do panelu browaru</div>
+        <div class="form-grid one">
+          <label class="field">
+            <div class="label">Login</div>
+            <input id="loginUsername" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <div class="label">Haslo</div>
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          </label>
+        </div>
+        <div class="callout">Start: `admin` / `admin123`</div>
+        <div class="row end">
+          <button class="btn" type="submit">Zaloguj</button>
+        </div>
+        <div class="error hidden" id="loginError"></div>
+      </form>
+    </dialog>
+
+    <dialog id="modalDialog" class="dialog">
+      <form method="dialog" class="dialog-body" id="modalForm">
+        <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+          <div>
+            <div class="dialog-title" id="modalTitle">-</div>
+            <div class="dialog-subtitle" id="modalSubtitle">-</div>
+          </div>
+          <button class="btn btn-ghost" id="modalClose" type="button" aria-label="Zamknij">X</button>
+        </div>
+        <div id="modalContent"></div>
+        <div class="row end gap">
+          <button class="btn btn-secondary" id="modalCancel" type="button">Anuluj</button>
+          <button class="btn" id="modalOk" type="submit" value="ok">Zapisz</button>
+        </div>
+        <div class="error hidden" id="modalError"></div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
